@@ -1,0 +1,259 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nido — Registro de tomas</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 20px;
+      background: #f7f6f2;
+      color: #283a36;
+      font-family: system-ui, sans-serif;
+    }
+    main { max-width: 550px; margin: auto; }
+    h1 { margin-bottom: 4px; }
+    .muted { color: #71817b; }
+    .card {
+      background: white;
+      border-radius: 18px;
+      padding: 20px;
+      margin: 16px 0;
+      box-shadow: 0 2px 12px #00000008;
+    }
+    .stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; }
+    .stat { background: #eaf2ed; border-radius: 12px; padding: 12px 6px; text-align: center; }
+    .stat strong { display: block; font-size: 23px; }
+    .stat small { font-size: 11px; }
+    label { display: block; margin-top: 12px; font-weight: 600; }
+    input, textarea {
+      width: 100%; padding: 12px;
+      margin-top: 5px; border: 1px solid #ccd6d0;
+      border-radius: 10px; font-size: 16px;
+      font-family: inherit;
+    }
+    button {
+      border: 0; border-radius: 10px;
+      padding: 13px; font-size: 15px; cursor: pointer;
+    }
+    .primary { background: #346b58; color: white; width: 100%; margin-top: 18px; }
+    .secondary { background: #edf0ed; }
+    .entry { border-bottom: 1px solid #eee; padding: 13px 0; }
+    .entry:last-child { border: 0; }
+    .entry-top { display: flex; justify-content: space-between; gap: 8px; }
+    .delete { color: #a33737; background: #fff0f0; padding: 6px 10px; }
+    .row { display: flex; align-items: center; gap: 8px; }
+    .row input { width: auto; }
+    .note { font-size: 12px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>🍼 Nido</h1>
+  <div class="muted">Registro de tomas del bebé</div>
+
+  <section class="card">
+    <label for="dia">Consultar día</label>
+    <input type="date" id="dia">
+    <h3>Resumen diario</h3>
+    <div class="stats">
+      <div class="stat"><strong id="total">0</strong><small>ml totales</small></div>
+      <div class="stat"><strong id="numero">0</strong><small>tomas</small></div>
+      <div class="stat"><strong id="media">0</strong><small>ml/toma</small></div>
+    </div>
+    <p class="muted" id="desglose"></p>
+  </section>
+
+  <section class="card">
+    <h2>Nueva toma</h2>
+    <form id="formulario">
+      <label for="fecha">Fecha</label>
+      <input type="date" id="fecha" required>
+
+      <label for="hora">Hora</label>
+      <input type="time" id="hora" required>
+
+      <label for="materna">Leche materna (ml)</label>
+      <input type="number" id="materna" min="0" step="1" value="0" required>
+
+      <label for="formula">Leche de fórmula (ml)</label>
+      <input type="number" id="formula" min="0" step="1" value="0" required>
+
+      <label class="row">
+        <input type="checkbox" id="vomito">
+        Hubo vómito
+      </label>
+
+      <label for="notas">Observaciones</label>
+      <textarea id="notas" rows="2" placeholder="Opcional"></textarea>
+
+      <button class="primary" type="submit">Guardar toma</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Historial del día</h2>
+    <div id="historial"></div>
+  </section>
+
+  <p class="muted note">
+    Los datos se guardan únicamente en este navegador.
+    No borres los datos de Safari. Esta versión todavía
+    no incluye copias de seguridad ni sincronización.
+    Los volúmenes registrados no descuentan lo vomitado.
+  </p>
+</main>
+
+<script>
+  const CLAVE = "nido_tomas_v1";
+  const $ = id => document.getElementById(id);
+
+  function fechaLocal() {
+    const d = new Date();
+    const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 10);
+  }
+
+  function horaLocal() {
+    const d = new Date();
+    return String(d.getHours()).padStart(2, "0") + ":" +
+      String(d.getMinutes()).padStart(2, "0");
+  }
+
+  function cargar() {
+    try {
+      const datos = JSON.parse(localStorage.getItem(CLAVE) || "[]");
+      return Array.isArray(datos) ? datos : [];
+    } catch {
+      return [];
+    }
+  }
+
+  let tomas = cargar();
+
+  $("dia").value = fechaLocal();
+  $("fecha").value = fechaLocal();
+  $("hora").value = horaLocal();
+
+  function guardar() {
+    localStorage.setItem(CLAVE, JSON.stringify(tomas));
+  }
+
+  function mostrar() {
+    const dia = $("dia").value;
+    const lista = tomas.filter(t => t.fecha === dia)
+      .sort((a, b) => a.hora.localeCompare(b.hora));
+
+    const lm = lista.reduce((s, t) => s + t.materna, 0);
+    const la = lista.reduce((s, t) => s + t.formula, 0);
+    const total = lm + la;
+
+    $("total").textContent = total;
+    $("numero").textContent = lista.length;
+    $("media").textContent = lista.length
+      ? Math.round(total / lista.length) : 0;
+    $("desglose").textContent =
+      "Materna: " + lm + " ml · Fórmula: " + la + " ml";
+
+    const historial = $("historial");
+    historial.replaceChildren();
+
+    if (!lista.length) {
+      const p = document.createElement("p");
+      p.className = "muted";
+      p.textContent = "Todavía no hay tomas registradas.";
+      historial.append(p);
+      return;
+    }
+
+    lista.forEach(t => {
+      const div = document.createElement("div");
+      div.className = "entry";
+
+      const top = document.createElement("div");
+      top.className = "entry-top";
+
+      const detalle = document.createElement("strong");
+      detalle.textContent = t.hora + " — " +
+        (t.materna + t.formula) + " ml";
+
+      const borrar = document.createElement("button");
+      borrar.className = "delete";
+      borrar.textContent = "Eliminar";
+      borrar.onclick = () => {
+        if (!confirm("¿Eliminar esta toma?")) return;
+        tomas = tomas.filter(x => x.id !== t.id);
+        guardar();
+        mostrar();
+      };
+
+      top.append(detalle, borrar);
+      div.append(top);
+
+      const info = document.createElement("p");
+      info.className = "muted";
+      info.textContent =
+        "Materna: " + t.materna + " ml · Fórmula: " +
+        t.formula + " ml" + (t.vomito ? " · Vómito" : "");
+      div.append(info);
+
+      if (t.notas) {
+        const nota = document.createElement("p");
+        nota.textContent = t.notas;
+        div.append(nota);
+      }
+
+      historial.append(div);
+    });
+  }
+
+  $("formulario").addEventListener("submit", e => {
+    e.preventDefault();
+
+    const materna = Number($("materna").value);
+    const formula = Number($("formula").value);
+
+    if (!Number.isInteger(materna) ||
+        !Number.isInteger(formula) ||
+        materna < 0 || formula < 0 ||
+        materna + formula <= 0) {
+      alert("Introduce una cantidad válida mayor que cero.");
+      return;
+    }
+
+    tomas.push({
+      id: crypto.randomUUID(),
+      fecha: $("fecha").value,
+      hora: $("hora").value,
+      materna,
+      formula,
+      vomito: $("vomito").checked,
+      notas: $("notas").value.trim()
+    });
+
+    try {
+      guardar();
+    } catch {
+      tomas.pop();
+      alert("No se pudo guardar. Comprueba el almacenamiento.");
+      return;
+    }
+
+    $("dia").value = $("fecha").value;
+    $("materna").value = 0;
+    $("formula").value = 0;
+    $("vomito").checked = false;
+    $("notas").value = "";
+    $("hora").value = horaLocal();
+
+    mostrar();
+    alert("Toma guardada correctamente.");
+  });
+
+  $("dia").addEventListener("change", mostrar);
+  mostrar();
+</script>
+</body>
+</html>
